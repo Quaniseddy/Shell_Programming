@@ -1,0 +1,67 @@
+#!/bin/dash
+
+if test $# -ne 3
+then
+    if test $# -ne 2
+    then
+        echo "usage: give-fetch <assignment> <zid> [n]" >&2
+        exit 1
+    else
+        n=0
+    fi
+else
+    if test "$3" -eq 0 2>/dev/null
+    then
+        n=1
+    else
+        n="$3"
+    fi
+fi
+
+if ! echo "$1" | grep -E '^[a-z][a-zA-Z0-9_]*$' >/dev/null
+then
+    echo "give-add: invalid assignment: ${1}" >&2
+    exit 1
+fi
+
+if ! test "$n" -eq "$n" 2>/dev/null
+then
+    echo "usage: give-fetch <assignment> <zid> [n]" >&2
+    exit 1
+fi
+
+if ! echo "$2" | grep -E '^z[0-9]{7}$' >/dev/null
+then
+    echo "give-fetch: invalid zid: ${1}" >&2
+    exit 1
+fi
+
+cd .give &&
+if ! test -e "$1"
+then
+    echo "give-fetch: assignment ${1} not found" >&2
+    exit 1
+else
+    cd "$1" &&
+    if ! test -e "$2"
+    then
+        echo "give-fetch: submission ${n} not found for ${1}" >&2
+        exit 1
+    else
+        cd "$2" &&
+        if test "$n" -le 0
+        then
+            adjust=$(ls -1 | wc -l)
+            n=$((n+adjust))
+        fi
+        if ! test -e "$n"
+        then
+            echo "give-fetch: submission ${n} not found for ${1}" >&2
+            exit 1
+        else
+            file=$(sed -n '2p' "${n}"/timestamp)
+            cat "${n}/${file}"
+        fi
+    fi
+fi
+

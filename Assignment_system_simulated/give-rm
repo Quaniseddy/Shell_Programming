@@ -1,0 +1,23 @@
+#!/bin/dash
+
+if test $# -ne 1
+then
+    echo "usage: give-rm <assignment>"
+    exit 1
+fi
+
+if ! echo "$1" | grep -E '^[a-z][a-zA-Z0-9_]*$' >/dev/null
+then
+    echo "give-rm: invalid assignment: ${1}"
+    exit 1
+fi
+
+cd .give &&
+if test -e "$1"
+then
+    rm -r "$1" &&
+    echo "assignment ${1} removed"
+else
+    echo "give-rm: assignment ${1} not found"
+    exit 1
+fi

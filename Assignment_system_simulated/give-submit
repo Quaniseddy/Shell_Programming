@@ -1,0 +1,62 @@
+#!/bin/dash
+
+if test "$#" -ne 3
+then
+    echo "usage: give-submit <assignment> <zid> <filename>" >&2
+    exit 1
+fi
+
+if ! echo "$2" | grep -E '^z[0-9]{7}$' >/dev/null
+then
+    echo "give-submit: invalid zid: ${2}" >&2
+    exit 1
+fi
+
+if ! echo "$3" | grep -E '^^[a-zA-Z0-9_\-\/\.]*$' >/dev/null
+then
+    echo "give-submit: invalid filename: ${3}" >&2
+    exit 1
+fi
+
+if ! echo "$1" | grep -E '^[a-z][a-zA-Z0-9_]*$' >/dev/null
+then
+    echo "give-add: invalid assignment: ${1}" >&2
+    exit 1
+fi
+
+if test ! -e ".give/${1}"
+then
+    echo "give-submit: assignment ${1} not found" >&2
+    exit 1
+fi
+
+if ! test -e "$3"
+then
+    echo "give-submit: ${3}: No such file or directory" >&2
+    exit 1
+fi
+
+if ! test -e ".give//${1}/${2}"
+then
+    mkdir ".give/${1}/${2}"
+fi
+
+byte=$(wc -c "$3"| cut -d' ' -f1)
+
+cd ".give/${1}/${2}" || exit 1
+
+i=1
+
+while test -e "$i"
+do
+    i=$((i+1))
+done
+
+date=$(date '+%a %b  %-d %H:%M:%S %Y')
+
+cd '-' >/dev/null &&
+mkdir ".give/${1}/${2}/${i}" &&
+cp "$3" ".give/${1}/${2}/${i}" &&
+echo "Submission accepted - submission ${i}: ${3} ${byte} bytes @ ${date}" &&
+echo "submission ${i}: ${3} ${byte} bytes @ ${date}" > ".give/${1}/${2}/${i}/timestamp" &&
+echo "${3}" >> ".give/${1}/${2}/${i}/timestamp"

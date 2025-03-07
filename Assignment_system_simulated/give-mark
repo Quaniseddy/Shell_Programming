@@ -1,0 +1,304 @@
+#!/bin/dash
+
+transform() {
+    sed 's/[^0-9\\n]//g' $1
+}
+
+if test "$#" -ne 1
+then
+    echo "usage: give-mark <assignment>" >&2
+    exit 1
+fi
+
+if ! echo "$1" | grep -E '^[a-z][a-zA-Z0-9_]*$' >/dev/null
+then
+    echo "give-mark: invalid assignment: ${1}" >&2
+    exit 1
+fi
+
+if test ! -e ".give/${1}"
+then
+    echo "give-mark: assignment ${1} not found" >&2
+    exit 1
+fi
+
+
+cd .give/${1} &&
+for zid in z[0-9]*/
+do
+    if ! test "$zid" = 'z[0-9]*/'
+    then
+        i=1
+        j=0
+        h=0
+        score=0
+        total=0
+        last=$(ls -1 ${zid} | wc -l)
+        time_stamp=$(head -n1 ${zid}${last}/timestamp)
+        zid=$(echo $zid | cut -d'/' -f1 )
+        echo "*** Student ${zid} - ${time_stamp}"
+
+        test_number=$(wc -l _AUTOMARKING | cut -d' ' -f1)
+        
+        while test "$i" -le "$test_number"
+        do
+            line=$(sed -n "${i}p" _AUTOMARKING)
+            if ! test "$line" = ''
+            then
+                if echo "$line" | grep -E '^#.*$' >/dev/null
+                then
+                    i=$((i+1))
+                    continue
+                else
+                    tmp_stdin=$(mktemp)
+                    label=$(echo "$line" | cut -d'|' -f1)
+                    args=$(echo "$line" |cut -d'|' -f2)
+                    stdin=$(echo "$line" |cut -d'|' -f3)
+                    echo "$line" |cut -d'|' -f3 > $tmp_stdin
+                    opt=$(echo "$line" |cut -d'|' -f4)
+
+                    mark=$(echo "$line" |cut -d'|' -f5)
+
+                    if ! echo "$label" | grep -E '^[a-z][a-zA-Z0-9_]*$' >/dev/null
+                    then
+                        echo "give-autotest: .give/${1}/_AUTOTESTS:${i}: invalid test label: ${label}"
+                        exit 1
+                    fi
+
+                    for arg in $args
+                    do
+                        if ! echo "$arg" | grep -E '^[a-zA-Z0-9_\.\-]*$' >/dev/null
+                        then
+                            echo "give-autotest: .give/${1}/_AUTOTESTS:${i}: invalid test arguments: ${args}"
+                            exit 1
+                        fi
+                    done
+
+                    if ! echo "$stdin" | grep -E '^[a-zA-Z0-9_.-\\n]*$' >/dev/null
+                    then
+                        echo "give-autotest: .give/${1}/_AUTOTESTS:${i}: invalid test stdin: ${stdin}"
+                        exit 1
+                    fi
+
+                    if ! echo "$opt" | grep -E '^[bcdw]*$' >/dev/null
+                    then
+                        echo "give-autotest: .give/${1}/_AUTOTESTS:${i}: invalid test option: ${opt}"
+                        exit 1
+                    fi
+
+                    if ! echo "$mark" | grep -E '^[0-9]*$' >/dev/null
+                    then
+                        echo "give-autotest: .give/${1}/_AUTOTESTS:${i}: invalid test mark: ${mark}"
+                        exit 1
+                    else
+                        total=$((total+mark))
+                    fi
+
+                    diff_opt=''
+                    digit=0
+                    #diff_opt=$(echo $opt | sed 's/b/B/g' | sed 's/c/i/g' | sed 's/d/--ignore-matching-lines='[^0-9\\n]'/g')     
+                    if echo $opt | grep -E 'b' >/dev/null
+                        then diff_opt="${diff_opt}B"
+                    fi
+                    if echo $opt | grep -E 'c' >/dev/null
+                        then diff_opt="${diff_opt}i"
+                    fi
+                    if echo $opt | grep -E 'w' >/dev/null
+                        then diff_opt="${diff_opt}w"
+                    fi
+                    if echo $opt | grep -E 'd' >/dev/null
+                        then digit=1
+                    fi
+                    
+                    #echo $diff_opt
+                    #echo "current line is ${i} with label name ${label} args ${args} stdin ${stdin} and options ${opt}"
+                    tmp1_sto=$(mktemp)
+                    tmp1_ste=$(mktemp)
+                    tmp1_exit=$(mktemp)
+                    tmp2_sto=$(mktemp)
+                    tmp2_ste=$(mktemp)
+                    tmp2_exit=$(mktemp)
+                    
+                   
+
+                    (./_solution $args < $tmp_stdin) 1>$tmp1_sto 2>/dev/null
+                    echo $? > $tmp1_exit
+                    (./_solution $args < $tmp_stdin) 2>$tmp1_ste 1>/dev/null
+                    
+                    filename=$(tail -n1 ${zid}/${last}/timestamp)
+                    (./${zid}/${last}/${filename} $args < $tmp_stdin) 1>$tmp2_sto 2>/dev/null
+                    echo $? > $tmp2_exit
+                    (./${zid}/${last}/${filename} $args < $tmp_stdin) 2>$tmp2_ste 1>/dev/null
+
+                    if ! test "$diff_opt" = ''
+                    then 
+                        if ! echo "$diff_opt" | grep -E '^\-' >/dev/null
+                        then
+                            diff_opt="-${diff_opt}"
+                        fi
+                    fi 
+
+                    if test $digit -eq 1
+                    then
+                        transit_tmp1=$(mktemp)
+                        transit_tmp2=$(mktemp)
+                        transit_tmp3=$(mktemp)
+                        transit_tmp4=$(mktemp)
+                        transform "$tmp1_sto" > $transit_tmp1
+                        transform "$tmp1_ste" > $transit_tmp2
+                        transform "$tmp2_sto" > $transit_tmp3
+                        transform "$tmp2_ste" > $transit_tmp4
+                        cat $transit_tmp1 >"$tmp1_sto"
+                        cat $transit_tmp2 >"$tmp1_ste"
+                        cat $transit_tmp3 >"$tmp2_sto"
+                        cat $transit_tmp4 >"$tmp2_ste"
+                    fi
+
+                    if diff $diff_opt $tmp1_sto $tmp2_sto >/dev/null
+                    then
+                        if diff $diff_opt $tmp1_ste $tmp2_ste >/dev/null
+                        then
+                            if diff $tmp1_exit $tmp2_exit >/dev/null
+                            then
+                                echo "* Test ${label} passed (${mark} marks)."
+                                j=$((j+1))
+                                score=$((score+mark))
+                            else
+                                echo "* Test ${label} failed."
+                                h=$((h+1))
+                                correct_exit=$(cat $tmp1_exit | cut -d' ' -f1)
+                                wrong_exit=$(cat $tmp2_exit| cut -d' ' -f1)
+                                echo "Exit status of ${wrong_exit} incorrect should be ${correct_exit}"
+                            fi
+                        else
+                            echo "* Test ${label} failed."
+                            
+                            if diff -w $tmp1_ste $tmp2_ste > /dev/null
+                            then
+                                h=$((h+1))
+                                echo "Missing newline at end of stderr"
+                            else
+                                h=$((h+1))
+                                wrong_byte=$(wc -c $tmp2_ste | cut -d' ' -f1)
+                                echo "--- Incorrect stderr of ${wrong_byte} bytes:"
+                                cat $tmp2_ste
+                                echo 
+                                correct_byte=$(wc -c $tmp1_ste | cut -d' ' -f1)
+                                echo "--- Correct stderr is these ${correct_byte} bytes:"
+                                cat $tmp1_ste
+                                echo
+                            fi
+
+                            if ! diff $tmp1_exit $tmp2_exit >/dev/null
+                            then
+                                correct_exit=$(cat $tmp1_exit | cut -d' ' -f1)
+                                wrong_exit=$(cat $tmp2_exit | cut -d' ' -f1)
+                                echo "Exit status of ${wrong_exit} incorrect should be ${correct_exit}"
+                            fi
+                        fi
+                    else
+                        echo "* Test ${label} failed."
+                        correct_byte=$(wc -c $tmp1_sto | cut -d' ' -f1)
+                        wrong_byte=$(wc -c $tmp2_sto | cut -d' ' -f1)
+                        if test $correct_byte -eq 0
+                        then
+                            echo "--- No stdout expected, these ${wrong_byte} bytes produced:"
+                            cat $tmp2_sto
+                            echo
+                        elif test $wrong_byte -eq 0
+                        then
+                            h=$((h+1))
+                            echo "--- No stdout produced, these ${correct_byte} bytes expected:"
+                            cat $tmp1_sto
+                            echo
+                        else
+                            if test $correct_byte -gt $wrong_byte
+                            then
+                                diff=$((correct_byte-wrong_byte))
+                            else
+                                diff=$((wrong_byte-correct_byte))
+                            fi
+                            if test $diff -eq 1
+                            then
+                                line_check1=$(mktemp)
+                                line_check2=$(mktemp)
+                                cat $tmp1_sto | tr -d '\n' 1>$line_check1
+                                cat $tmp2_sto | tr -d '\n' 1>$line_check2
+                                if diff $line_check1 $line_check2 > /dev/null
+                                then
+                                    h=$((h+1))
+                                    if test $correct_byte -gt $wrong_byte
+                                    then
+                                        echo "Missing newline at end of stdout"
+                                    else
+                                        echo "Extra newline at end of stdout"
+                                    fi
+                                else
+                                    h=$((h+1))
+                                    echo "--- Incorrect stdout of ${wrong_byte} bytes:"
+                                    cat $tmp2_sto
+                                    echo
+                                    echo "--- Correct stdout is these ${correct_byte} bytes:"
+                                    cat $tmp1_sto
+                                    echo
+                                fi
+                            else
+                                h=$((h+1))
+                                echo "--- Incorrect stdout of ${wrong_byte} bytes:"
+                                cat $tmp2_sto
+                                echo
+                                echo "--- Correct stdout is these ${correct_byte} bytes:"
+                                cat $tmp1_sto
+                                echo
+                            fi
+                        fi
+
+                        if ! diff $diff_opt $tmp1_ste $tmp2_ste >/dev/null
+                        then
+                            if diff -w $tmp1_sto $tmp2_sto > /dev/null
+                            then
+                                echo "Missing newline at end of stderr"
+                            else
+                                wrong_byte=$(wc -c $tmp2_ste | cut -d' ' -f1)
+                                echo "--- Incorrect stderr of ${wrong_byte} bytes:"
+                                cat $tmp2_ste
+                                echo 
+                                correct_byte=$(wc -c $tmp1_ste | cut -d' ' -f1)
+                                echo "--- Correct stderr is these ${correct_byte} bytes:"
+                                cat $tmp1_ste
+                                echo
+                            fi
+                        fi
+
+                        if ! diff $tmp1_exit $tmp2_exit >/dev/null
+                        then
+                            correct_exit=$(cat $tmp1_exit | cut -d' ' -f1)
+                            wrong_exit=$(cat $tmp2_exit | cut -d' ' -f1)
+                            echo "Exit status of ${wrong_exit} incorrect should be ${correct_exit}"
+                        fi
+
+                    fi
+                    i=$((i+1))
+                fi
+            else
+                i=$((i+1))
+                continue
+            fi
+        done
+
+        if test $j -eq 0
+        then
+            if test $h -eq 0
+            then
+                echo "No automarking"
+            else
+                echo "** ${j} tests passed, ${h} tests failed - mark: ${score}/${total}"
+            fi
+        else
+            echo "** ${j} tests passed, ${h} tests failed - mark: ${score}/${total}"
+        fi
+
+        rm -f $tmp1_sto $tmp1_ste $tmp1_exit $tmp2_sto $tmp2_ste $tmp2_exit
+
+    fi
+done

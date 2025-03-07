@@ -1,0 +1,52 @@
+#!/bin/dash
+
+if test $# -ne 1
+then
+    echo "usage: give-status <zid>" >&2
+    exit 1
+fi
+
+if ! echo "$1" | grep -E '^z[0-9]{7}$' >/dev/null
+then
+    echo "give-submit: invalid zid: ${1}" >&2
+    exit 1
+fi
+
+i=0
+
+cd .give &&
+for assignment in *
+do
+    if ! test "$assignment" = '*'
+    then
+        cd "$assignment" &&
+
+        if test -e "${1}"
+        then
+            cd "${1}" &&
+            n=$(ls -1 | wc -l)
+            i=$((i+n))
+            echo "* ${n} submissions for ${assignment}" &&
+            for subs in *
+            do
+                cd "$subs" &&
+                head -n1 'timestamp' &&
+                cd ..
+            done
+            cd ..
+        else
+            cd ..
+            continue
+        fi
+
+        cd ..
+    else
+        echo "no submissions for ${1}"
+    fi
+done
+
+if test "$i" -eq 0
+then
+    echo "no submissions for ${1}"
+    exit 1
+fi
